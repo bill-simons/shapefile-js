@@ -1,6 +1,7 @@
 # Shapefile.js
 
 Pure JavaScript library for parsing Shapefiles, returns Geojson projected into WGS84 lat lons.
+Forked from https://github.com/calvinmetcalf/shapefile-js so that bad features at the end of the shapefile can be ignored (baed on a real-world data file that can opened by many other software).
 
 ## Usage
 
