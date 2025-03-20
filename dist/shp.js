@@ -467,6 +467,21 @@
           sExpr(v[3], obj[key]);
         }
         return;
+      case 'EDATUM':
+      case 'ENGINEERINGDATUM':
+      case 'LOCAL_DATUM':
+      case 'DATUM':
+      case 'VERT_CS':
+      case 'VERTCRS':
+      case 'VERTICALCRS':
+        v[0] = ['name', v[0]];
+        mapit(obj, key, v);
+        return;
+      case 'COMPD_CS':
+      case 'COMPOUNDCRS':
+      case 'FITTED_CS':
+      // the followings are the crs defined in
+      // https://github.com/proj4js/proj4js/blob/1da4ed0b865d0fcb51c136090569210cdcc9019e/lib/parseCode.js#L11
       case 'PROJECTEDCRS':
       case 'PROJCRS':
       case 'GEOGCS':
@@ -476,20 +491,11 @@
       case 'GEODCRS':
       case 'GEODETICCRS':
       case 'GEODETICDATUM':
-      case 'EDATUM':
-      case 'ENGINEERINGDATUM':
-      case 'VERT_CS':
-      case 'VERTCRS':
-      case 'VERTICALCRS':
-      case 'COMPD_CS':
-      case 'COMPOUNDCRS':
-      case 'ENGINEERINGCRS':
       case 'ENGCRS':
-      case 'FITTED_CS':
-      case 'LOCAL_DATUM':
-      case 'DATUM':
+      case 'ENGINEERINGCRS':
         v[0] = ['name', v[0]];
         mapit(obj, key, v);
+        obj[key].type = key;
         return;
       default:
         i = -1;
@@ -504,7 +510,8 @@
 
   var D2R = 0.01745329251994329577;
 
-
+  var knownTypes = ['PROJECTEDCRS', 'PROJCRS', 'GEOGCS', 'GEOCCS', 'PROJCS', 'LOCAL_CS', 'GEODCRS',
+    'GEODETICCRS', 'GEODETICDATUM', 'ENGCRS', 'ENGINEERINGCRS'];
 
   function rename(obj, params) {
     var outName = params[0];
@@ -522,6 +529,27 @@
   }
 
   function cleanWKT(wkt) {
+    var keys = Object.keys(wkt);
+    for (var i = 0, ii = keys.length; i <ii; ++i) {
+      var key = keys[i];
+      // the followings are the crs defined in
+      // https://github.com/proj4js/proj4js/blob/1da4ed0b865d0fcb51c136090569210cdcc9019e/lib/parseCode.js#L11
+      if (knownTypes.indexOf(key) !== -1) {
+        setPropertiesFromWkt(wkt[key]);
+      }
+      if (typeof wkt[key] === 'object') {
+        cleanWKT(wkt[key]);
+      }
+    }
+  }
+
+  function setPropertiesFromWkt(wkt) {
+    if (wkt.AUTHORITY) {
+      var authority = Object.keys(wkt.AUTHORITY)[0];
+      if (authority && authority in wkt.AUTHORITY) {
+        wkt.title = authority + ':' + wkt.AUTHORITY[authority];
+      }
+    }
     if (wkt.type === 'GEOGCS') {
       wkt.projName = 'longlat';
     } else if (wkt.type === 'LOCAL_CS') {
@@ -586,7 +614,7 @@
       if (wkt.datumCode.slice(0, 2) === 'd_') {
         wkt.datumCode = wkt.datumCode.slice(2);
       }
-      if (wkt.datumCode === 'new_zealand_geodetic_datum_1949' || wkt.datumCode === 'new_zealand_1949') {
+      if (wkt.datumCode === 'new_zealand_1949') {
         wkt.datumCode = 'nzgd49';
       }
       if (wkt.datumCode === 'wgs_1984' || wkt.datumCode === 'world_geodetic_system_1984') {
@@ -595,13 +623,7 @@
         }
         wkt.datumCode = 'wgs84';
       }
-      if (wkt.datumCode.slice(-6) === '_ferro') {
-        wkt.datumCode = wkt.datumCode.slice(0, - 6);
-      }
-      if (wkt.datumCode.slice(-8) === '_jakarta') {
-        wkt.datumCode = wkt.datumCode.slice(0, - 8);
-      }
-      if (~wkt.datumCode.indexOf('belge')) {
+      if (wkt.datumCode === 'belge_1972') {
         wkt.datumCode = 'rnb72';
       }
       if (geogcs.DATUM && geogcs.DATUM.SPHEROID) {
@@ -696,14 +718,11 @@
   }
   function wkt(wkt) {
     var lisp = parseString(wkt);
-    var type = lisp.shift();
-    var name = lisp.shift();
-    lisp.unshift(['name', name]);
-    lisp.unshift(['type', type]);
+    var type = lisp[0];
     var obj = {};
     sExpr(lisp, obj);
     cleanWKT(obj);
-    return obj;
+    return obj[type];
   }
 
   function defs(name) {
@@ -952,12 +971,12 @@
     return p;
   }
 
-  var names$w = ["Mercator", "Popular Visualisation Pseudo Mercator", "Mercator_1SP", "Mercator_Auxiliary_Sphere", "merc"];
+  var names$v = ["Mercator", "Popular Visualisation Pseudo Mercator", "Mercator_1SP", "Mercator_Auxiliary_Sphere", "merc"];
   var merc = {
     init: init$v,
     forward: forward$u,
     inverse: inverse$u,
-    names: names$w
+    names: names$v
   };
 
   function init$u() {
@@ -967,16 +986,16 @@
   function identity(pt) {
     return pt;
   }
-  var names$v = ["longlat", "identity"];
+  var names$u = ["longlat", "identity"];
   var longlat = {
     init: init$u,
     forward: identity,
     inverse: identity,
-    names: names$v
+    names: names$u
   };
 
   var projs = [merc, longlat];
-  var names$u = {};
+  var names$t = {};
   var projStore = [];
 
   function add(proj, i) {
@@ -987,7 +1006,7 @@
     }
     projStore[len] = proj;
     proj.names.forEach(function(n) {
-      names$u[n.toLowerCase()] = len;
+      names$t[n.toLowerCase()] = len;
     });
     return this;
   }
@@ -997,8 +1016,8 @@
       return false;
     }
     var n = name.toLowerCase();
-    if (typeof names$u[n] !== 'undefined' && projStore[names$u[n]]) {
-      return projStore[names$u[n]];
+    if (typeof names$t[n] !== 'undefined' && projStore[names$t[n]]) {
+      return projStore[names$t[n]];
     }
   }
 
@@ -1100,13 +1119,6 @@
     a: 6378249.145,
     rf: 293.4663,
     ellipseName: "Clarke 1880 mod."
-  };
-
-  exports$2.clrk80ign = {
-    a: 6378249.2,
-    b: 6356515,
-    rf: 293.4660213,
-    ellipseName: "Clarke 1880 (IGN)"
   };
 
   exports$2.clrk58 = {
@@ -1371,12 +1383,6 @@
     datumName: "Hermannskogel"
   };
 
-  exports$1.militargeographische_institut = {
-    towgs84: "577.326,90.129,463.919,5.137,1.474,5.297,2.4232",
-    ellipse: "bessel",
-    datumName: "Militar-Geographische Institut"
-  };
-
   exports$1.osni52 = {
     towgs84: "482.530,-130.596,564.557,-1.042,-0.214,-0.631,8.15",
     ellipse: "airy",
@@ -1483,10 +1489,22 @@
     var view = new DataView(data);
     var isLittleEndian = detectLittleEndian(view);
     var header = readHeader(view, isLittleEndian);
+    if (header.nSubgrids > 1) {
+      console.log('Only single NTv2 subgrids are currently supported, subsequent sub grids are ignored');
+    }
     var subgrids = readSubgrids(view, header, isLittleEndian);
     var nadgrid = {header: header, subgrids: subgrids};
     loadedNadgrids[key] = nadgrid;
     return nadgrid;
+  }
+
+  /**
+   * Set and already loaded grid file to a key that can be used in a proj string like +nadgrids=<key>.
+   * @param {string} key 
+   * @param {NadGrid} nadgrid 
+   */
+  function setNadgrid(key, nadgrid) {
+    loadedNadgrids[key] = nadgrid;
   }
 
   /**
@@ -1569,7 +1587,6 @@
         count: subHeader.gridNodeCount,
         cvs: mapNodes(nodes)
       });
-      gridOffset += 176 + subHeader.gridNodeCount * 16;
     }
     return grids;
   }
@@ -1584,8 +1601,8 @@
       parent: decodeString(view, offset + 24, offset + 24 + 8).trim(),
       lowerLatitude: view.getFloat64(offset + 72, isLittleEndian),
       upperLatitude: view.getFloat64(offset + 88, isLittleEndian),
-      lowerLongitude: view.getFloat64(offset + 104, isLittleEndian),
-      upperLongitude: view.getFloat64(offset + 120, isLittleEndian),
+      lowerLongitude: 0 - view.getFloat64(offset + 120, isLittleEndian),
+      upperLongitude: 0 - view.getFloat64(offset + 104, isLittleEndian),
       latitudeInterval: view.getFloat64(offset + 136, isLittleEndian),
       longitudeInterval: view.getFloat64(offset + 152, isLittleEndian),
       gridNodeCount: view.getInt32(offset + 168, isLittleEndian)
@@ -1986,10 +2003,9 @@
       console.log('Grid shift grids not found');
       return -1;
     }
-    var input = {x: -point.x, y: point.y};
+    var input = {x: point.x, y: point.y};
     var output = {x: Number.NaN, y: Number.NaN};
     var attemptedGrids = [];
-    outer:
     for (var i = 0; i < source.grids.length; i++) {
       var grid = source.grids[i];
       attemptedGrids.push(grid.name);
@@ -2005,30 +2021,27 @@
         }
         continue;
       }
-      var subgrids = grid.grid.subgrids;
-      for (var j = 0, jj = subgrids.length; j < jj; j++) {
-        var subgrid = subgrids[j];
-        // skip tables that don't match our point at all
-        var epsilon = (Math.abs(subgrid.del[1]) + Math.abs(subgrid.del[0])) / 10000.0;
-        var minX = subgrid.ll[0] - epsilon;
-        var minY = subgrid.ll[1] - epsilon;
-        var maxX = subgrid.ll[0] + (subgrid.lim[0] - 1) * subgrid.del[0] + epsilon;
-        var maxY = subgrid.ll[1] + (subgrid.lim[1] - 1) * subgrid.del[1] + epsilon;
-        if (minY > input.y || minX > input.x || maxY < input.y || maxX < input.x ) {
-          continue;
-        }
-        output = applySubgridShift(input, inverse, subgrid);
-        if (!isNaN(output.x)) {
-          break outer;
-        }
+      var subgrid = grid.grid.subgrids[0];
+      // skip tables that don't match our point at all
+      var epsilon = (Math.abs(subgrid.del[1]) + Math.abs(subgrid.del[0])) / 10000.0;
+      var minX = subgrid.ll[0] - epsilon;
+      var minY = subgrid.ll[1] - epsilon;
+      var maxX = subgrid.ll[0] + (subgrid.lim[0] - 1) * subgrid.del[0] + epsilon;
+      var maxY = subgrid.ll[1] + (subgrid.lim[1] - 1) * subgrid.del[1] + epsilon;
+      if (minY > input.y || minX > input.x || maxY < input.y || maxX < input.x ) {
+        continue;
+      }
+      output = applySubgridShift(input, inverse, subgrid);
+      if (!isNaN(output.x)) {
+        break;
       }
     }
     if (isNaN(output.x)) {
       console.log("Failed to find a grid shift table for location '"+
-        -input.x * R2D + " " + input.y * R2D + " tried: '" + attemptedGrids + "'");
+        input.x * R2D + " " + input.y * R2D + " tried: '" + attemptedGrids + "'");
       return -1;
     }
-    point.x = -output.x;
+    point.x = output.x;
     point.y = output.y;
     return 0;
   }
@@ -2045,7 +2058,7 @@
       if (isNaN(t.x)) {
         return val;
       }
-      t.x = tb.x - t.x;
+      t.x = tb.x + t.x;
       t.y = tb.y - t.y;
       var i = 9, tol = 1e-12;
       var dif, del;
@@ -2055,7 +2068,12 @@
           console.log("Inverse grid shift iteration failed, presumably at grid edge.  Using first approximation.");
           break;
         }
-        dif = {x: tb.x - (del.x + t.x), y: tb.y - (del.y + t.y)};
+        dif = {
+          //x: tb.x - (del.x + t.x),
+          x: tb.x + del.x - t.x,
+          //y: tb.y - (del.y + t.y),
+          y: tb.y - del.y - t.y,
+        };
         t.x += dif.x;
         t.y += dif.y;
       } while (i-- && Math.abs(dif.x) > tol && Math.abs(dif.y) > tol);
@@ -2067,7 +2085,7 @@
       val.y = t.y + ct.ll[1];
     } else {
       if (!isNaN(t.x)) {
-        val.x = pin.x + t.x;
+        val.x = pin.x - t.x;
         val.y = pin.y + t.y;
       }
     }
@@ -2194,25 +2212,14 @@
   }
 
   function checkNotWGS(source, dest) {
-    return (
-      (source.datum.datum_type === PJD_3PARAM || source.datum.datum_type === PJD_7PARAM || source.datum.datum_type === PJD_GRIDSHIFT) && dest.datumCode !== 'WGS84') ||
-      ((dest.datum.datum_type === PJD_3PARAM || dest.datum.datum_type === PJD_7PARAM || dest.datum.datum_type === PJD_GRIDSHIFT) && source.datumCode !== 'WGS84');
+    return ((source.datum.datum_type === PJD_3PARAM || source.datum.datum_type === PJD_7PARAM) && dest.datumCode !== 'WGS84') || ((dest.datum.datum_type === PJD_3PARAM || dest.datum.datum_type === PJD_7PARAM) && source.datumCode !== 'WGS84');
   }
 
   function transform(source, dest, point, enforceAxis) {
     var wgs84;
     if (Array.isArray(point)) {
       point = common(point);
-    } else {
-      // Clone the point object so inputs don't get modified
-      point = {
-        x: point.x,
-        y: point.y,
-        z: point.z,
-        m: point.m
-      };
     }
-    var hasZ = point.z !== undefined;
     checkSanity(point);
     // Workaround for datum shifts towgs84, if either source or destination projection is not wgs84
     if (source.datum && dest.datum && checkNotWGS(source, dest)) {
@@ -2287,9 +2294,6 @@
       return adjust_axis(dest, true, point);
     }
 
-    if (point && !hasZ) {
-      delete point.z;
-    }
     return point;
   }
 
@@ -3107,7 +3111,7 @@
       northing = 7900000.0;
       break;
     default:
-      northing = -1.0;
+      northing = -1;
     }
     if (northing >= 0.0) {
       return northing;
@@ -3360,12 +3364,12 @@
     return p;
   }
 
-  var names$t = ["Fast_Transverse_Mercator", "Fast Transverse Mercator"];
+  var names$s = ["Fast_Transverse_Mercator", "Fast Transverse Mercator"];
   var tmerc = {
     init: init$t,
     forward: forward$s,
     inverse: inverse$s,
-    names: names$t
+    names: names$s
   };
 
   function sinh(x) {
@@ -3622,12 +3626,12 @@
     return p;
   }
 
-  var names$s = ["Extended_Transverse_Mercator", "Extended Transverse Mercator", "etmerc", "Transverse_Mercator", "Transverse Mercator", "Gauss Kruger", "Gauss_Kruger", "tmerc"];
+  var names$r = ["Extended_Transverse_Mercator", "Extended Transverse Mercator", "etmerc", "Transverse_Mercator", "Transverse Mercator", "tmerc"];
   var etmerc = {
     init: init$s,
     forward: forward$r,
     inverse: inverse$r,
-    names: names$s
+    names: names$r
   };
 
   function adjust_zone(zone, lon) {
@@ -3662,10 +3666,10 @@
     this.inverse = etmerc.inverse;
   }
 
-  var names$r = ["Universal Transverse Mercator System", "utm"];
+  var names$q = ["Universal Transverse Mercator System", "utm"];
   var utm = {
     init: init$r,
-    names: names$r,
+    names: names$q,
     dependsOn: dependsOn
   };
 
@@ -3701,7 +3705,7 @@
     var lat = p.y;
     var num = Math.pow(Math.tan(0.5 * lat + FORTPI) / this.K, 1 / this.C);
     for (var i = MAX_ITER$2; i > 0; --i) {
-      lat = 2 * Math.atan(num * srat(this.e * Math.sin(p.y), - 0.5 * this.e)) - HALF_PI;
+      lat = 2 * Math.atan(num * srat(this.e * Math.sin(p.y), -0.5 * this.e)) - HALF_PI;
       if (Math.abs(lat - p.y) < DEL_TOL) {
         break;
       }
@@ -3715,14 +3719,10 @@
     p.y = lat;
     return p;
   }
-
-  var names$q = ["gauss"];
   var gauss = {
     init: init$q,
     forward: forward$q,
-    inverse: inverse$q,
-    names: names$q
-  };
+    inverse: inverse$q};
 
   function init$p() {
     gauss.init.apply(this);
@@ -3759,7 +3759,7 @@
 
     p.x /= this.k0;
     p.y /= this.k0;
-    if ((rho = hypot(p.x, p.y))) {
+    if ((rho = Math.sqrt(p.x * p.x + p.y * p.y))) {
       var c = 2 * Math.atan2(rho, this.R2);
       sinc = Math.sin(c);
       cosc = Math.cos(c);
@@ -3778,7 +3778,7 @@
     return p;
   }
 
-  var names$p = ["Stereographic_North_Pole", "Oblique_Stereographic", "sterea","Oblique Stereographic Alternative","Double_Stereographic"];
+  var names$p = ["Stereographic_North_Pole", "Oblique_Stereographic", "Polar_Stereographic", "sterea","Oblique Stereographic Alternative","Double_Stereographic"];
   var sterea = {
     init: init$p,
     forward: forward$p,
@@ -3792,13 +3792,6 @@
   }
 
   function init$o() {
-
-    // setting default parameters
-    this.x0 = this.x0 || 0;
-    this.y0 = this.y0 || 0;
-    this.lat0 = this.lat0 || 0;
-    this.long0 = this.long0 || 0;
-
     this.coslat0 = Math.cos(this.lat0);
     this.sinlat0 = Math.sin(this.lat0);
     if (this.sphere) {
@@ -3820,9 +3813,7 @@
         }
       }
       this.cons = Math.sqrt(Math.pow(1 + this.e, 1 + this.e) * Math.pow(1 - this.e, 1 - this.e));
-      if (this.k0 === 1 && !isNaN(this.lat_ts) && Math.abs(this.coslat0) <= EPSLN && Math.abs(Math.cos(this.lat_ts)) > EPSLN) {
-        // When k0 is 1 (default value) and lat_ts is a vaild number and lat0 is at a pole and lat_ts is not at a pole
-        // Recalculate k0 using formula 21-35 from p161 of Snyder, 1987
+      if (this.k0 === 1 && !isNaN(this.lat_ts) && Math.abs(this.coslat0) <= EPSLN) {
         this.k0 = 0.5 * this.cons * msfnz(this.e, Math.sin(this.lat_ts), Math.cos(this.lat_ts)) / tsfnz(this.e, this.con * this.lat_ts, this.con * Math.sin(this.lat_ts));
       }
       this.ms1 = msfnz(this.e, this.sinlat0, this.coslat0);
@@ -3903,7 +3894,7 @@
       lat = Math.asin(Math.cos(c) * this.sinlat0 + p.y * Math.sin(c) * this.coslat0 / rh);
       if (Math.abs(this.coslat0) < EPSLN) {
         if (this.lat0 > 0) {
-          lon = adjust_lon(this.long0 + Math.atan2(p.x, - 1 * p.y));
+          lon = adjust_lon(this.long0 + Math.atan2(p.x, -1 * p.y));
         }
         else {
           lon = adjust_lon(this.long0 + Math.atan2(p.x, p.y));
@@ -3930,7 +3921,7 @@
         p.y *= this.con;
         ts = rh * this.cons / (2 * this.a * this.k0);
         lat = this.con * phi2z(this.e, ts);
-        lon = this.con * adjust_lon(this.con * this.long0 + Math.atan2(p.x, - 1 * p.y));
+        lon = this.con * adjust_lon(this.con * this.long0 + Math.atan2(p.x, -1 * p.y));
       }
       else {
         ce = 2 * Math.atan(rh * this.cosX0 / (2 * this.a * this.k0 * this.ms1));
@@ -3953,7 +3944,7 @@
 
   }
 
-  var names$o = ["stere", "Stereographic_South_Pole", "Polar Stereographic (variant B)", "Polar_Stereographic"];
+  var names$o = ["stere", "Stereographic_South_Pole", "Polar Stereographic (variant B)"];
   var stere = {
     init: init$o,
     forward: forward$o,
@@ -4023,7 +4014,7 @@
 
     var S = 0;
     var phy = b;
-    var prevPhy = -1000;
+    var prevPhy = -1e3;
     var iteration = 0;
     while (Math.abs(phy - prevPhy) > 0.0000001) {
       if (++iteration > 20) {
@@ -4514,7 +4505,7 @@
     ok = 0;
     var iter = 0;
     do {
-      p.y = 2 * (Math.atan(Math.pow(this.k, - 1 / this.alfa) * Math.pow(Math.tan(u / 2 + this.s45), 1 / this.alfa) * Math.pow((1 + this.e * Math.sin(fi1)) / (1 - this.e * Math.sin(fi1)), this.e / 2)) - this.s45);
+      p.y = 2 * (Math.atan(Math.pow(this.k, -1 / this.alfa) * Math.pow(Math.tan(u / 2 + this.s45), 1 / this.alfa) * Math.pow((1 + this.e * Math.sin(fi1)) / (1 - this.e * Math.sin(fi1)), this.e / 2)) - this.s45);
       if (Math.abs(fi1 - p.y) < 0.0000000001) {
         ok = 1;
       }
@@ -5492,11 +5483,11 @@
     this.A[3] = 0.063294409;
     this.A[4] = -0.02526853;
     this.A[5] = 0.0117879;
-    this.A[6] = -0.0055161;
+    this.A[6] = -55161e-7;
     this.A[7] = 0.0026906;
-    this.A[8] = -0.001333;
+    this.A[8] = -1333e-6;
     this.A[9] = 0.00067;
-    this.A[10] = -0.00034;
+    this.A[10] = -34e-5;
 
     this.B_re = [];
     this.B_im = [];
@@ -5504,7 +5495,7 @@
     this.B_im[1] = 0;
     this.B_re[2] = 0.249204646;
     this.B_im[2] = 0.003371507;
-    this.B_re[3] = -0.001541739;
+    this.B_re[3] = -1541739e-9;
     this.B_im[3] = 0.041058560;
     this.B_re[4] = -0.10162907;
     this.B_im[4] = 0.01727609;
@@ -5518,7 +5509,7 @@
     this.C_re[1] = 1.3231270439;
     this.C_im[1] = 0;
     this.C_re[2] = -0.577245789;
-    this.C_im[2] = -0.007809598;
+    this.C_im[2] = -7809598e-9;
     this.C_re[3] = 0.508307513;
     this.C_im[3] = -0.112208952;
     this.C_re[4] = -0.15094762;
@@ -5537,7 +5528,7 @@
     this.D[6] = 0.007317;
     this.D[7] = 0.01220;
     this.D[8] = 0.00394;
-    this.D[9] = -0.0013;
+    this.D[9] = -13e-4;
   }
 
   /**
@@ -6312,7 +6303,7 @@
         rh = Math.sqrt(p.x * p.x + p.y * p.y);
         M = Mlp - rh;
         lat = imlfn(M / this.a, e0, e1, e2, e3);
-        lon = adjust_lon(this.long0 + Math.atan2(p.x, - 1 * p.y));
+        lon = adjust_lon(this.long0 + Math.atan2(p.x, -1 * p.y));
         p.x = lon;
         p.y = lat;
         return p;
@@ -6566,7 +6557,7 @@
       if (this.face === FACE_ENUM.RIGHT) {
         lon = qsc_shift_lon_origin(lon, +HALF_PI);
       } else if (this.face === FACE_ENUM.BACK) {
-        lon = qsc_shift_lon_origin(lon, +SPI);
+        lon = qsc_shift_lon_origin(lon, 3.14159265359);
       } else if (this.face === FACE_ENUM.LEFT) {
         lon = qsc_shift_lon_origin(lon, -HALF_PI);
       }
@@ -6666,8 +6657,8 @@
     cosphi = 1 - cosmu * cosmu * tannu * tannu * (1 - Math.cos(Math.atan(1 / Math.cos(theta))));
     if (cosphi < -1) {
       cosphi = -1;
-    } else if (cosphi > +1) {
-      cosphi = +1;
+    } else if (cosphi > 1) {
+      cosphi = 1;
     }
 
     /* Apply the result to the real area on the cube face.
@@ -6746,7 +6737,7 @@
       if (this.face === FACE_ENUM.RIGHT) {
         lp.lam = qsc_shift_lon_origin(lp.lam, -HALF_PI);
       } else if (this.face === FACE_ENUM.BACK) {
-        lp.lam = qsc_shift_lon_origin(lp.lam, -SPI);
+        lp.lam = qsc_shift_lon_origin(lp.lam, -3.14159265359);
       } else if (this.face === FACE_ENUM.LEFT) {
         lp.lam = qsc_shift_lon_origin(lp.lam, +HALF_PI);
       }
@@ -6800,9 +6791,9 @@
   /* Helper function: shift the longitude. */
   function qsc_shift_lon_origin(lon, offset) {
     var slon = lon + offset;
-    if (slon < -SPI) {
+    if (slon < -3.14159265359) {
       slon += TWO_PI;
-    } else if (slon > +SPI) {
+    } else if (slon > 3.14159265359) {
       slon -= TWO_PI;
     }
     return slon;
@@ -6822,47 +6813,47 @@
 
 
   var COEFS_X = [
-      [1.0000, 2.2199e-17, -7.15515e-05, 3.1103e-06],
-      [0.9986, -0.000482243, -2.4897e-05, -1.3309e-06],
-      [0.9954, -0.00083103, -4.48605e-05, -9.86701e-07],
-      [0.9900, -0.00135364, -5.9661e-05, 3.6777e-06],
-      [0.9822, -0.00167442, -4.49547e-06, -5.72411e-06],
-      [0.9730, -0.00214868, -9.03571e-05, 1.8736e-08],
-      [0.9600, -0.00305085, -9.00761e-05, 1.64917e-06],
-      [0.9427, -0.00382792, -6.53386e-05, -2.6154e-06],
-      [0.9216, -0.00467746, -0.00010457, 4.81243e-06],
-      [0.8962, -0.00536223, -3.23831e-05, -5.43432e-06],
-      [0.8679, -0.00609363, -0.000113898, 3.32484e-06],
-      [0.8350, -0.00698325, -6.40253e-05, 9.34959e-07],
-      [0.7986, -0.00755338, -5.00009e-05, 9.35324e-07],
-      [0.7597, -0.00798324, -3.5971e-05, -2.27626e-06],
-      [0.7186, -0.00851367, -7.01149e-05, -8.6303e-06],
-      [0.6732, -0.00986209, -0.000199569, 1.91974e-05],
+      [1.0000, 2.2199e-17, -715515e-10, 3.1103e-06],
+      [0.9986, -482243e-9, -24897e-9, -13309e-10],
+      [0.9954, -83103e-8, -448605e-10, -9.86701e-7],
+      [0.9900, -135364e-8, -59661e-9, 3.6777e-06],
+      [0.9822, -167442e-8, -449547e-11, -572411e-11],
+      [0.9730, -214868e-8, -903571e-10, 1.8736e-08],
+      [0.9600, -305085e-8, -900761e-10, 1.64917e-06],
+      [0.9427, -382792e-8, -653386e-10, -26154e-10],
+      [0.9216, -467746e-8, -10457e-8, 4.81243e-06],
+      [0.8962, -536223e-8, -323831e-10, -543432e-11],
+      [0.8679, -609363e-8, -113898e-9, 3.32484e-06],
+      [0.8350, -698325e-8, -640253e-10, 9.34959e-07],
+      [0.7986, -755338e-8, -500009e-10, 9.35324e-07],
+      [0.7597, -798324e-8, -35971e-9, -227626e-11],
+      [0.7186, -851367e-8, -701149e-10, -86303e-10],
+      [0.6732, -986209e-8, -199569e-9, 1.91974e-05],
       [0.6213, -0.010418, 8.83923e-05, 6.24051e-06],
-      [0.5722, -0.00906601, 0.000182, 6.24051e-06],
-      [0.5322, -0.00677797, 0.000275608, 6.24051e-06]
+      [0.5722, -906601e-8, 0.000182, 6.24051e-06],
+      [0.5322, -677797e-8, 0.000275608, 6.24051e-06]
   ];
 
   var COEFS_Y = [
-      [-5.20417e-18, 0.0124, 1.21431e-18, -8.45284e-11],
-      [0.0620, 0.0124, -1.26793e-09, 4.22642e-10],
-      [0.1240, 0.0124, 5.07171e-09, -1.60604e-09],
-      [0.1860, 0.0123999, -1.90189e-08, 6.00152e-09],
-      [0.2480, 0.0124002, 7.10039e-08, -2.24e-08],
-      [0.3100, 0.0123992, -2.64997e-07, 8.35986e-08],
-      [0.3720, 0.0124029, 9.88983e-07, -3.11994e-07],
-      [0.4340, 0.0123893, -3.69093e-06, -4.35621e-07],
-      [0.4958, 0.0123198, -1.02252e-05, -3.45523e-07],
-      [0.5571, 0.0121916, -1.54081e-05, -5.82288e-07],
-      [0.6176, 0.0119938, -2.41424e-05, -5.25327e-07],
-      [0.6769, 0.011713, -3.20223e-05, -5.16405e-07],
-      [0.7346, 0.0113541, -3.97684e-05, -6.09052e-07],
-      [0.7903, 0.0109107, -4.89042e-05, -1.04739e-06],
-      [0.8435, 0.0103431, -6.4615e-05, -1.40374e-09],
-      [0.8936, 0.00969686, -6.4636e-05, -8.547e-06],
-      [0.9394, 0.00840947, -0.000192841, -4.2106e-06],
-      [0.9761, 0.00616527, -0.000256, -4.2106e-06],
-      [1.0000, 0.00328947, -0.000319159, -4.2106e-06]
+      [-520417e-23, 0.0124, 1.21431e-18, -845284e-16],
+      [0.0620, 0.0124, -1.26793e-9, 4.22642e-10],
+      [0.1240, 0.0124, 5.07171e-09, -1.60604e-9],
+      [0.1860, 0.0123999, -1.90189e-8, 6.00152e-09],
+      [0.2480, 0.0124002, 7.10039e-08, -2.24e-8],
+      [0.3100, 0.0123992, -2.64997e-7, 8.35986e-08],
+      [0.3720, 0.0124029, 9.88983e-07, -3.11994e-7],
+      [0.4340, 0.0123893, -369093e-11, -4.35621e-7],
+      [0.4958, 0.0123198, -102252e-10, -3.45523e-7],
+      [0.5571, 0.0121916, -154081e-10, -5.82288e-7],
+      [0.6176, 0.0119938, -241424e-10, -5.25327e-7],
+      [0.6769, 0.011713, -320223e-10, -5.16405e-7],
+      [0.7346, 0.0113541, -397684e-10, -6.09052e-7],
+      [0.7903, 0.0109107, -489042e-10, -104739e-11],
+      [0.8435, 0.0103431, -64615e-9, -1.40374e-9],
+      [0.8936, 0.00969686, -64636e-9, -8547e-9],
+      [0.9394, 0.00840947, -192841e-9, -42106e-10],
+      [0.9761, 0.00616527, -256e-6, -42106e-10],
+      [1.0000, 0.00328947, -319159e-9, -42106e-10]
   ];
 
   var FXC = 0.8487;
@@ -7248,7 +7239,7 @@
   }
 
   function inverse(p) {
-      var v_x = -1.0;
+      var v_x = -1;
       var v_y = 0.0;
       var v_z = 0.0;
       var a, b, det, k;
@@ -7361,12 +7352,13 @@
   proj4.toPoint = common;
   proj4.defs = defs;
   proj4.nadgrid = nadgrid;
+  proj4.setNadgrid = setNadgrid;
   proj4.transform = transform;
   proj4.mgrs = mgrs;
   proj4.version = '__VERSION__';
   includedProjections(proj4);
 
-  var f,m="deflate-raw",x=self.DecompressionStream;try{new x(m),f=async t=>{let n=new x(m),e=n.writable.getWriter(),i=n.readable.getReader();e.write(t),e.close();let c,o=[],s=0,a=0,l;for(;!(l=await i.read()).done;)c=l.value,o.push(c),s+=c.length;return o.length-1?(c=new Uint8Array(s),o.map(r=>{c.set(r,a),a+=r.length;}),c):o[0]};}catch{}var _=new TextDecoder,h=t=>{throw new Error("but-unzip~"+t)},E=t=>_.decode(t),A=t=>{let n=t.length-20,e=Math.max(n-65516,2);for(;(n=t.lastIndexOf(80,n-1))!==-1&&!(t[n+1]===75&&t[n+2]===5&&t[n+3]===6)&&n>e;);return n};function*C(t,n=f){let e=A(t);e===-1&&h(2);let i=(r,d)=>t.subarray(e+=r,e+=d),c=new DataView(t.buffer,t.byteOffset),o=r=>c.getUint16(r+e,!0),s=r=>c.getUint32(r+e,!0),a=o(10);for(a!==o(8)&&h(3),e=s(16);a--;){let r=o(10),d=o(28),g=o(30),y=o(32),b=s(20),w=s(42),p=E(i(46,d)),D=E(i(g,y)),L=e,u;e=w,u=i(30+o(26)+o(28),b),yield {filename:p,comment:D,read:()=>r&8?n(u):r?h(1):u},e=L;}}
+  var f,m="deflate-raw",x=self.DecompressionStream;try{new x(m),f=async t=>{let n=new x(m),e=n.writable.getWriter(),i=n.readable.getReader();e.write(t),e.close();let c,o=[],s=0,a=0,l;for(;!(l=await i.read()).done;)c=l.value,o.push(c),s+=c.length;return o.length-1?(c=new Uint8Array(s),o.map(r=>{c.set(r,a),a+=r.length;}),c):o[0]};}catch{}var _=new TextDecoder,h=t=>{throw new Error("but-unzip~"+t)},E=t=>_.decode(t),A=t=>{let n=t.length-20,e=Math.max(n-65516,2);for(;(n=t.lastIndexOf(80,n-1))!==-1&&!(t[n+1]===75&&t[n+2]===5&&t[n+3]===6)&&n>e;);return n};function*C(t,n=f){let e=A(t);e===-1&&h(2);let i=(r,d)=>t.subarray(e+=r,e+=d),c=new DataView(t.buffer,t.byteOffset),o=r=>c.getUint16(r+e,true),s=r=>c.getUint32(r+e,true),a=o(10);for(a!==o(8)&&h(3),e=s(16);a--;){let r=o(10),d=o(28),g=o(30),y=o(32),b=s(20),w=s(42),p=E(i(46,d)),D=E(i(g,y)),L=e,u;e=w,u=i(30+o(26)+o(28),b),yield {filename:p,comment:D,read:()=>r&8?n(u):r?h(1):u},e=L;}}
 
   const regex$1 = /.+\.(shp|dbf|json|prj|cpg)$/i;
   var unzip = async (buffer) => {
@@ -7776,7 +7768,7 @@
       };
     }
 
-    if (offset + len + 8 > this.buffer.byteLength) {
+    if ((len < 0) || (len > 100_000_000) || (offset + len + 8 > this.buffer.byteLength) ) {
       return;
     }
     return {

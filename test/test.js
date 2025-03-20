@@ -1,10 +1,13 @@
 
 import shp from '../lib/index.js';
-import { should as shouldRaw, use } from 'chai';
 
-import { chaiAsPromised } from 'chai-promised';
+import chaiAsPromised from 'chai-as-promised';
+import * as chai from 'chai';
+
+import { should as shouldRaw, use } from 'chai';
 const should = shouldRaw();
-use(chaiAsPromised);
+chai.use(chaiAsPromised);
+
 const get = url => fetch(url).then(resp => resp.arrayBuffer())
 describe('Shp', function () {
   describe('park and rides not zipped', function () {
@@ -396,6 +399,18 @@ describe('Shp', function () {
         thing.should.have.property('type', 'FeatureCollection');
         return thing.features;
       }).should.eventually.have.length(203);
+    });
+  });
+  describe('fault polygons zipped', function () {
+    const faultPolygons = shp('http://localhost:3000/files/2300-100-FaultPolygon.zip').catch(e => console.log('ERR', e));
+    it('should have the right keys', function () {
+      return faultPolygons.should.eventually.contain.keys('type', 'features');
+    });
+    it('should be the right type', function () {
+      return faultPolygons.should.eventually.have.property('type', 'FeatureCollection');
+    });
+    it('should have the right number of features', function () {
+      return faultPolygons.then(function (a) { return a.features; }).should.eventually.have.length(9);
     });
   });
 });
